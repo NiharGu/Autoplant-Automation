@@ -4,7 +4,6 @@ Automates vehicle allocation and order processing for Autoplant (DFPCL) logistic
 
 [![Node.js](https://img.shields.io/badge/Node.js-16+-green.svg)](https://nodejs.org/)
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## ✨ Features
 
@@ -250,9 +249,6 @@ Autoplant-Automation/
 
 **Infrastructure:** Oracle Cloud Free Tier
 
-## 📄 License
-
-MIT License - See LICENSE file for details
 
 ---
 
