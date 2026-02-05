@@ -1,0 +1,13 @@
+# Sensitive Data
+.env
+auth/
+
+# Dependencies
+node_modules/
+venv/
+*.log
+
+# Temp/Auto-generated files
+details.png
+error_ss.png
+.DS_Store
