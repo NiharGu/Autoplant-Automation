@@ -212,67 +212,204 @@ const dataPatterns = {
     driverLicense: /\b\d{4}\b/
 };
 
+// Product mapping patterns (case insensitive)
+const PRODUCT_MAPPINGS = [
+    {
+        productName: "N 40 KG MAHADHAN CROPTEK 9:24:24",
+        patterns: [
+            /\b(n|c)\s*-?\s*9\b/i,
+            /\b(croptek\s*)?n\s*9\b/i,
+            /\b9\s*[:\-.\s]\s*24\s*[:\-.\s]\s*24\b/i,
+            /\b92424\b/i,
+            /\bc\s*-?\s*9\s*-?\s*24\s*-?\s*24\b/i
+        ]
+    },
+    {
+        productName: "N 50 KG MAHADHAN SMARTEK NPKS 20:20:0:13",
+        patterns: [
+            /\b(smartek\s*)?s\s*-?\s*20\b/i,
+            /\b20\s*[:\-.\s]\s*20\s*[:\-.\s]\s*0\s*[:\-.\s]\s*13\b/i,
+            /\b2020013\b/i,
+            /\bs\s*-?\s*20\s*-?\s*20\s*-?\s*0\s*-?\s*13\b/i
+        ]
+    },
+    {
+        productName: "N 50 KG MAHADHAN 24:24:0",
+        patterns: [
+            /\b24\s*[:\-.\s]\s*24\s*[:\-.\s]\s*0\b/i,
+            /\b24240\b/i
+        ]
+    },
+    {
+        productName: "N 40 KG MAHADHAN CROPTEK NPK 11:30:14",
+        patterns: [
+            /\b(n|c)\s*-?\s*11\b/i,
+            /\b11\s*[:\-.\s]\s*30\s*[:\-.\s]\s*14\b/i,
+            /\b113014\b/i
+        ]
+    },
+    {
+        productName: "N 40 KG MAHADHAN CROPTEK NPK 8:21:21",
+        patterns: [
+            /\b(n|c)\s*-?\s*8\b/i,
+            /\b8\s*[:\-.\s]\s*21\s*[:\-.\s]\s*21\b/i,
+            /\b82121\b/i,
+            /\b(c|n)\s*-?\s*8\s*-?\s*21\s*-?\s*21\b/i
+        ]
+    },
+    {
+        productName: "N 50 KG MAHADHAN SMARTEK NPK 10:26:26",
+        patterns: [
+            /\b(smartek\s*)?s\s*-?\s*10\b/i,
+            /\b10\s*[:\-.\s]\s*26\s*[:\-.\s]\s*26\b/i,
+            /\b102626\b/i,
+            /\b1026\b/i,
+            /\b10\s*-?\s*26\b/i
+        ]
+    },
+    {
+        productName: "N 50 KG MAHADHAN SMARTEK NPKS 16:20:0:13",
+        patterns: [
+            /\b(smartek\s*)?s\s*-?\s*16\b/i,
+            /\b16\s*[:\-.\s]\s*20\s*[:\-.\s]\s*0\s*[:\-.\s]\s*13\b/i,
+            /\b1620013\b/i
+        ]
+    }
+];
+
+// Function to extract product type from message
+function extractProductInfo(messageText) {
+    if (!messageText) return null;
+    
+    console.log(`📦 Extracting product info from message:`, messageText);
+    
+    // Step 1: Extract known fields to identify and skip their lines
+    const vehicleMatch = messageText.match(dataPatterns.vehicleNumber);
+    const soMatch = messageText.match(dataPatterns.soNumber);
+    const phoneMatch = messageText.match(dataPatterns.phoneNumber);
+    const weightMatch = messageText.match(dataPatterns.weight);
+    
+    console.log(`📦 Known fields extracted:`, {
+        vehicle: vehicleMatch ? vehicleMatch[0] : null,
+        so: soMatch ? soMatch[0] : null,
+        phone: phoneMatch ? phoneMatch[0] : null,
+        weight: weightMatch ? weightMatch[1] : null
+    });
+    
+    // Step 2: Split message into lines and find first line with numbers that's NOT a known field
+    const lines = messageText.split('\n');
+    let productLineText = null;
+    
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) continue; // Skip empty lines
+        
+        // Skip if this line contains any of the known field values
+        if (vehicleMatch && trimmedLine.includes(vehicleMatch[0])) {
+            console.log(`📦 Skipping vehicle line: ${trimmedLine}`);
+            continue;
+        }
+        if (soMatch && trimmedLine.includes(soMatch[0])) {
+            console.log(`📦 Skipping SO line: ${trimmedLine}`);
+            continue;
+        }
+        if (phoneMatch && trimmedLine.includes(phoneMatch[0])) {
+            console.log(`📦 Skipping phone line: ${trimmedLine}`);
+            continue;
+        }
+        if (weightMatch && /\d+(?:\.\d+)?\s*MT\b/i.test(trimmedLine)) {
+            console.log(`📦 Skipping weight line: ${trimmedLine}`);
+            continue;
+        }
+        
+        // Check if this line has any numbers (potential product line)
+        if (/\d/.test(trimmedLine)) {
+            productLineText = trimmedLine;
+            console.log(`📦 Found product line candidate: ${trimmedLine}`);
+            break; // Found it!
+        }
+    }
+    
+    if (!productLineText) {
+        console.log(`📦 No product line found with numbers after skipping known fields`);
+        return null;
+    }
+    
+    // Step 3: Match against product mappings
+    for (const mapping of PRODUCT_MAPPINGS) {
+        for (const pattern of mapping.patterns) {
+            if (pattern.test(productLineText)) {
+                console.log(`📦 Matched pattern ${pattern} → ${mapping.productName}`);
+                return mapping.productName;
+            }
+        }
+    }
+    
+    console.log(`📦 No product mapping matched for: ${productLineText}`);
+    return null;
+}
+
 // Pattern-based extraction
 function extractDataFromMessage(messageText) {
-    if (!messageText) return null;
-    
-    const result = {
-        vehicle_num: null,
-        destination: null,
-        weight: null,
-        so_no: null,
-        phone_num: null,
-        driver_license: null,
-        driver_name: null
-    };
+    if (!messageText) return null;
+    
+    const result = {
+        vehicle_num: null,
+        destination: null,
+        weight: null,
+        so_no: null,
+        phone_num: null,
+        driver_license: null,
+        driver_name: null
+    };
 
-    // Extract vehicle number
-    const vehicleMatch = messageText.match(dataPatterns.vehicleNumber);
-    if (vehicleMatch) {
-        result.vehicle_num = vehicleMatch[0];
-    }
+    // Extract vehicle number
+    const vehicleMatch = messageText.match(dataPatterns.vehicleNumber);
+    if (vehicleMatch) {
+        result.vehicle_num = vehicleMatch[0];
+    }
 
-    // Extract all 10-digit numbers
-    const allTenDigitNumbers = messageText.match(/\b\d{10}\b/g) || [];
-    
-    for (const number of allTenDigitNumbers) {
-        const firstDigit = number[0];
-        
-        // Phone number: starts with 4-9
-        if (firstDigit >= '4' && firstDigit <= '9' && !result.phone_num) {
-            result.phone_num = number;
-        }
-        // SO number: starts with 0-3
-        else if (firstDigit >= '0' && firstDigit <= '3' && !result.so_no) {
-            result.so_no = number;
-        }
-    }
+    // Extract all 10-digit numbers
+    const allTenDigitNumbers = messageText.match(/\b\d{10}\b/g) || [];
+    
+    for (const number of allTenDigitNumbers) {
+        const firstDigit = number[0];
+        
+        // Phone number: starts with 4-9
+        if (firstDigit >= '4' && firstDigit <= '9' && !result.phone_num) {
+            result.phone_num = number;
+        }
+        // SO number: starts with 0-3
+        else if (firstDigit >= '0' && firstDigit <= '3' && !result.so_no) {
+            result.so_no = number;
+        }
+    }
 
-    // Extract weight (number followed by MT)
-    const weightMatch = messageText.match(dataPatterns.weight);
-    if (weightMatch) {
-        result.weight = weightMatch[1];
-    }
+    // Extract weight
+    const weightMatch = messageText.match(dataPatterns.weight);
+    if (weightMatch) {
+        result.weight = weightMatch[1];
+    }
 
-    // Extract destination (string before weight in same line)
-    const lines = messageText.split('\n');
-    for (let line of lines) {
-        if (line.match(dataPatterns.weight)) {
-            const destMatch = line.match(dataPatterns.destinationBeforeWeight);
-            if (destMatch) {
-                // Remove vehicle number from beginning if present
-                let destination = destMatch[1].trim();
-                const vehicleMatch = destination.match(dataPatterns.vehicleNumber);
-                if (vehicleMatch) {
-                    destination = destination.replace(vehicleMatch[0], '').trim();
-                }
-                result.destination = destination;
-                break;
-            }
-        }
-    }
+    // Extract destination (string before weight in same line)
+    const lines = messageText.split('\n');
+    for (let line of lines) {
+        if (line.match(dataPatterns.weight)) {
+            const destMatch = line.match(dataPatterns.destinationBeforeWeight);
+            if (destMatch) {
+                // Remove vehicle number from beginning if present
+                let destination = destMatch[1].trim();
+                const vehicleMatch = destination.match(dataPatterns.vehicleNumber);
+                if (vehicleMatch) {
+                    destination = destination.replace(vehicleMatch[0], '').trim();
+                }
+                result.destination = destination;
+                break;
+            }
+        }
+    }
 
-    return result;
+    return result;
 }
 
 // Line-based fallback extraction
@@ -449,6 +586,7 @@ async function sendToPython(finalData, chatId, originalMessage) {
             weight: finalData.weight || null,
             so_no: finalData.so_no || null,
             phone_num: finalData.phone_num || null,
+            product_type: finalData.product_type || null,
             chat_id: chatId, // Send chat ID so Python knows where to reply
             message_key: originalMessage.key // Send message key for replies
         };
@@ -835,7 +973,8 @@ async function handleApKaraCommand(sock, message) {
             console.error('❌ Error getting group metadata:', groupError);
             return;
         }
-         // Store the original message for reply context
+        
+        // Store the original message for reply context
         messageContexts.set(chatId, {
             messageKey: messageKey,
             originalMessage: message.message,
@@ -867,9 +1006,32 @@ async function handleApKaraCommand(sock, message) {
             so_no: null,
             phone_num: null,
             driver_license: null,
-            driver_name: null
+            driver_name: null,
+            product_type: null
         };
 
+        // Extract product information from the message text
+        let productInfo = null;
+        
+        // Check quoted message for product first
+        const quotedMessageForProduct = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (quotedMessageForProduct) {
+            let quotedText = '';
+            if (quotedMessageForProduct.conversation) {
+                quotedText = quotedMessageForProduct.conversation;
+            } else if (quotedMessageForProduct.extendedTextMessage?.text) {
+                quotedText = quotedMessageForProduct.extendedTextMessage.text;
+            }
+            
+            if (quotedText) {
+                productInfo = extractProductInfo(quotedText);
+                if (productInfo) {
+                    finalData.product_type = productInfo;
+                    console.log('📦 Product info extracted from quoted message:', productInfo);
+                }
+            }
+        }
+        
         // Check if this is an "ap kara" command with driver info
         if (messageText.toLowerCase().trim().startsWith('ap kara')) {
             // This should be a reply to the original message with the 4 variables
@@ -911,7 +1073,8 @@ async function handleApKaraCommand(sock, message) {
                 so_no: originalData.so_no || originalLineBasedData.so_no || null,
                 phone_num: originalData.phone_num || originalLineBasedData.phone_num || null,
                 driver_license: null,
-                driver_name: null
+                driver_name: null,
+                product_type: finalData.product_type
             };
 
             // Then, extract driver info from the ap kara reply
@@ -930,51 +1093,18 @@ async function handleApKaraCommand(sock, message) {
                     });
                 }
             }
-        } else {
-            // This is the old functionality for non-ap-kara commands
-            // Check if this is a reply to another message (original functionality)
-            const quotedMessage = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
 
-            if (!quotedMessage) {
-                await sock.sendMessage(chatId, {
-                    text: "❌ Please reply to a message or use 'ap kara' with driver info",
-                    quoted: message
-                });
-                return;
-            }
-
-            // Extract text from quoted message
-            let quotedText = '';
-            if (quotedMessage.conversation) {
-                quotedText = quotedMessage.conversation;
-            } else if (quotedMessage.extendedTextMessage?.text) {
-                quotedText = quotedMessage.extendedTextMessage.text;
-            }
-
-            if (!quotedText) {
-                await sock.sendMessage(chatId, {
-                    text: "❌ Could not extract text from the replied message",
-                    quoted: message
-                });
-                return;
-            }
-
-            // Extract data using pattern matching
-            const extractedData = extractDataFromMessage(quotedText);
-            
-            // Also try line-based extraction as fallback
-            const lineBasedData = extractDataByLines(quotedText);
-
-            // Merge results (prefer pattern-based, fallback to line-based)
-            // Only use values that are not null/undefined
-            finalData = {
-                vehicle_num: extractedData.vehicle_num || lineBasedData.vehicle_num || null,
-                destination: extractedData.destination || lineBasedData.destination || null,
-                weight: extractedData.weight || lineBasedData.weight || null,
-                so_no: extractedData.so_no || lineBasedData.so_no || null,
-                phone_num: extractedData.phone_num || lineBasedData.phone_num || null,
-                driver_license: null,
-                driver_name: null            };
+            // Extract product from reply lines after driver info (same way phone/weight are extracted)
+            const replyLines = messageText.split('\n').map(l => l.trim()).filter(l => l);
+            // Skip line 0 (ap kara) and line 1 (driver name + license)
+            if (replyLines.length > 2) {
+                const afterDriverText = replyLines.slice(2).join('\n');
+                const replyProductInfo = extractProductInfo(afterDriverText);
+                if (replyProductInfo) {
+                    finalData.product_type = replyProductInfo;
+                    console.log('📦 Product from reply overwrites quoted:', replyProductInfo);
+                }
+            }
         }
 
         // Convert all data to uppercase

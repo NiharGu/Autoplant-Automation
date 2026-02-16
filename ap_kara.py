@@ -14,6 +14,144 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def match_product_type(user_product_name, material_desc):
+    """
+    Match user product name with material description
+    
+    Args:
+        user_product_name: string like "N 50 KG MAHADHAN SMARTEK NPK 10:26:26" from JS
+        material_desc: string like "50 KG MAHADHAN SMARTEK NPKS 20:20:0:13" from web page
+    
+    Returns:
+        True if match, False otherwise
+    """
+    if not user_product_name or not material_desc:
+        return False
+    
+    # Convert both to uppercase for case-insensitive comparison
+    user_product_upper = user_product_name.upper().strip()
+    material_desc_upper = material_desc.upper().strip()
+    
+    # Remove "N " prefix from user product if present (weight prefix like "N 40 KG" or "N 50 KG")
+    # Since material descriptions may not have the "N " prefix
+    if user_product_upper.startswith("N "):
+        user_product_without_prefix = user_product_upper[2:].strip()
+    else:
+        user_product_without_prefix = user_product_upper
+    
+    # Check if user product (with or without prefix) is in material description
+    # or if material description is in user product
+    if (user_product_upper in material_desc_upper or 
+        user_product_without_prefix in material_desc_upper or
+        material_desc_upper in user_product_upper):
+        return True
+    
+    # Also try matching individual key parts (brand + ratio)
+    # Extract ratio from both strings (e.g., "10:26:26" or "9:24:24")
+    user_ratio = None
+    material_ratio = None
+    
+    # Match ratio patterns like "10:26:26", "9:24:24", "20:20:0:13"
+    ratio_pattern = r'\d+:\d+:\d+(?::\d+)?'
+    
+    user_ratio_match = re.search(ratio_pattern, user_product_upper)
+    if user_ratio_match:
+        user_ratio = user_ratio_match.group()
+    
+    material_ratio_match = re.search(ratio_pattern, material_desc_upper)
+    if material_ratio_match:
+        material_ratio = material_ratio_match.group()
+    
+    # If both have ratios and they match, and both contain same brand keywords
+    if user_ratio and material_ratio and user_ratio == material_ratio:
+        # Check if key brand words match (CROPTEK, SMARTEK, MAHADHAN)
+        user_brands = {'CROPTEK', 'SMARTEK', 'MAHADHAN'}
+        user_has_brands = {brand for brand in user_brands if brand in user_product_upper}
+        material_has_brands = {brand for brand in user_brands if brand in material_desc_upper}
+        
+        # If they share at least one brand, it's a match
+        if user_has_brands & material_has_brands:
+            return True
+    
+    return False
+
+def extract_material_descriptions(driver, so_no):
+    """
+    Extract all material descriptions for the given SO number from search results
+    Only includes rows with STATUS of PENDING
+    Returns:
+        List of tuples: [(checkbox_id, material_desc), ...]
+    """
+    try:
+        import time
+        time.sleep(1)  # Wait for search results to load
+        
+        # Find all rows in the table
+        rows = driver.find_elements(By.XPATH, 
+            "//tr[.//td[@aria-describedby='currentStatusRepurt_Material_Desc']]")
+        
+        results = []
+        
+        for row in rows:
+            try:
+                # Get material description
+                material_cell = row.find_element(By.XPATH, 
+                    ".//td[@aria-describedby='currentStatusRepurt_Material_Desc']")
+                material_desc = material_cell.text.strip()
+                
+                if not material_desc:
+                    continue
+                
+                # Check STATUS column - only accept PENDING or COMMITTED
+                try:
+                    status_cell = row.find_element(By.XPATH, 
+                        ".//td[@aria-describedby='currentStatusRepurt_Status']")
+                    status_text = status_cell.text.strip().upper()
+                    
+                    if status_text not in ("PENDING"):
+                        print(f"  ⏭️ Skipping row with status '{status_text}': {material_desc}")
+                        continue
+                    
+                    print(f"  ✅ Status '{status_text}' is valid for: {material_desc}")
+                except Exception as status_err:
+                    # If we can't find a dedicated status cell, try extracting from checkbox value
+                    try:
+                        checkbox = row.find_element(By.XPATH, 
+                            f".//input[starts-with(@id, 'OrderNo_{so_no}_')]")
+                        checkbox_value = checkbox.get_attribute('value') or checkbox.get_attribute('id') or ''
+                        value_parts = checkbox_value.split(',')
+                        if len(value_parts) > 4:
+                            status_text = value_parts[4].strip().upper()
+                            if status_text not in ("PENDING", "COMMITTED"):
+                                print(f"  ⏭️ Skipping row with status '{status_text}' (from value): {material_desc}")
+                                continue
+                            print(f"  ✅ Status '{status_text}' is valid (from value) for: {material_desc}")
+                        else:
+                            print(f"  ⚠️ Could not determine status, skipping: {material_desc}")
+                            continue
+                    except Exception:
+                        print(f"  ⚠️ Could not read status for row, skipping: {status_err}")
+                        continue
+                
+                # Find the corresponding checkbox in the same row
+                checkbox = row.find_element(By.XPATH, 
+                    f".//input[starts-with(@id, 'OrderNo_{so_no}_')]")
+                
+                checkbox_id = checkbox.get_attribute('id')
+                
+                results.append((checkbox_id, material_desc))
+                print(f"  Found: {material_desc} (ID: {checkbox_id})")
+                
+            except Exception as e:
+                print(f"  Warning: Could not extract material from row: {e}")
+                continue
+        
+        return results
+        
+    except Exception as e:
+        print(f"❌ Error extracting material descriptions: {e}")
+        return []
+
 app = Flask(__name__)
 
 @app.route('/process-data', methods=['POST'])
@@ -28,6 +166,7 @@ def process_data():
         WEIGHT = data.get('weight')
         SO_NO = data.get('so_no')
         PHONE_NUMBER = data.get('phone_num')
+        PRODUCT_TYPE = data.get('product_type')  # NEW: Product type info from JS
         
         print(f"Received data:")
         print(f"Driver Name: {DRIVER_NAME}")
@@ -37,6 +176,7 @@ def process_data():
         print(f"Weight: {WEIGHT}")
         print(f"SO Number: {SO_NO}")
         print(f"Phone: {PHONE_NUMBER}")
+        print(f"Product Type: {PRODUCT_TYPE}")  # NEW: Log product type
         
         # Process your data here - add your processing logic
         USERNAME = os.getenv('USERNAME')
@@ -209,13 +349,79 @@ def process_data():
         if search_results_found:
             print("🔄 Search results found - proceeding with steps 7-9")
             
+            # Step 6.5: Product type verification (NEW)
+            print("📦 Step 6.5: Product type verification")
+            
+            # Extract all material descriptions from search results
+            material_results = extract_material_descriptions(driver, SO_NO)
+            
+            VERIFIED_CHECKBOX_ID = None  # Track verified checkbox ID
+            
+            if material_results:
+                print(f"📦 Found {len(material_results)} material description(s)")
+                
+                # If product type was provided, verify it matches
+                if PRODUCT_TYPE:
+                    print(f"📦 Verifying product type: {PRODUCT_TYPE}")
+                    
+                    matching_materials = []
+                    for checkbox_id, material_desc in material_results:
+                        if match_product_type(PRODUCT_TYPE, material_desc):
+                            matching_materials.append((checkbox_id, material_desc))
+                            print(f"  ✅ Match: {material_desc}")
+                        else:
+                            print(f"  ❌ No match: {material_desc}")
+                    
+                    if len(matching_materials) == 0:
+                        # No matching products found
+                        available_options = "\n".join([f"  • {desc}" for _, desc in material_results])
+                        ERROR_MESSAGE = f"❌ No matching product found for SO {SO_NO}\n\n*Available products:*\n{available_options}\n\nPlease specify the correct product type."
+                        print(ERROR_MESSAGE)
+                        raise Exception(ERROR_MESSAGE)
+                    
+                    elif len(matching_materials) == 1:
+                        # Exactly one match - proceed with this one
+                        print(f"✅ Product verified: {matching_materials[0][1]}")
+                        # Store the correct checkbox ID to use later
+                        VERIFIED_CHECKBOX_ID = matching_materials[0][0]
+                    
+                    else:
+                        # Multiple matches - should be rare but ask for clarification
+                        available_options = "\n".join([f"  • {desc}" for _, desc in matching_materials])
+                        ERROR_MESSAGE = f"⚠️ Multiple matching products found for SO {SO_NO}\n\n*Matching products:*\n{available_options}\n\nPlease be more specific."
+                        print(ERROR_MESSAGE)
+                        raise Exception(ERROR_MESSAGE)
+                
+                # If product type was NOT provided
+                else:
+                    print("📦 No product type specified")
+                    
+                    if len(material_results) > 1:
+                        # Multiple products found - ask user for clarification
+                        available_options = "\n".join([f"  {i+1}. {desc}" for i, (_, desc) in enumerate(material_results)])
+                        ERROR_MESSAGE = f"⚠️ Multiple products found for SO {SO_NO}\n\n*Available products:*\n{available_options}\n\nPlease specify product type in your message (e.g., 'S20', 'C9', '9-24-24', 'Smartek', 'Croptek')."
+                        print(ERROR_MESSAGE)
+                        raise Exception(ERROR_MESSAGE)
+                    
+                    else:
+                        # Only one product - proceed without verification
+                        print(f"✅ Single product found, proceeding: {material_results[0][1]}")
+                        VERIFIED_CHECKBOX_ID = material_results[0][0]
+            
             # Step 7: Find and click checkbox - Method 1 only
             print(f"🔍 Looking for checkbox with SO_NO = {SO_NO}")
             
             try:
-                checkbox = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, f"//input[starts-with(@id, 'OrderNo_{SO_NO}_')]"))
-                )
+                # Use verified checkbox ID if available, otherwise use SO_NO pattern
+                if VERIFIED_CHECKBOX_ID:
+                    print(f"🔍 Using verified checkbox ID: {VERIFIED_CHECKBOX_ID}")
+                    checkbox = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.ID, VERIFIED_CHECKBOX_ID))
+                    )
+                else:
+                    checkbox = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.XPATH, f"//input[starts-with(@id, 'OrderNo_{SO_NO}_')]"))
+                    )
                 checkbox.click()
                 print(f"✅ Clicked checkbox with SO_NO = {SO_NO}")
             except Exception as e:
@@ -417,13 +623,133 @@ def process_data():
         # Wait for search results to load
         time.sleep(2)
         
+        # NEW: Product type verification (second search - before Step 12)
+        print("📦 Step 11.5: Product type verification (second search)")
+        
+        # Wait for search results to load
+        time.sleep(2)
+        
+        # Extract all material descriptions from search results (on COMMIT/ALLOCATED page)
+        # Find all rows with the SO number in the SplitOrder table
+        material_results_step12 = []
+        try:
+            # Find all radio buttons with SO_NO pattern
+            radio_buttons = driver.find_elements(By.XPATH, f"//input[@name='SplitOrder' and starts-with(@value, '{SO_NO}_')]")
+            
+            print(f"📦 Found {len(radio_buttons)} SplitOrder options for SO {SO_NO}")
+            
+            for radio in radio_buttons:
+                try:
+                    # Get the value which contains SO_NO and other info
+                    radio_value = radio.get_attribute("value")
+                    
+                    # Extract status from the radio value string
+                    # Format: SO_NO_xxx,qty,qty,-,STATUS,YES/NO,...
+                    # Status is the 5th comma-separated field (index 4)
+                    try:
+                        value_parts = radio_value.split(',')
+                        if len(value_parts) > 4:
+                            status_text = value_parts[4].strip().upper()
+                        else:
+                            print(f"  ⚠️ Could not parse status from value: {radio_value}")
+                            continue
+                    except Exception as parse_err:
+                        print(f"  ⚠️ Error parsing radio value: {parse_err}")
+                        continue
+                    
+                    # Only accept if COMMITTED
+                    if status_text not in ("COMMITTED"):
+                        print(f"  ⏭️ Skipping row with status '{status_text}' (Value: {radio_value})")
+                        continue
+                    
+                    print(f"  ✅ Status '{status_text}' is valid (Value: {radio_value})")
+                    
+                    # Find the row
+                    row = radio.find_element(By.XPATH, "./ancestor::tr")
+                    
+                    # Find the material description in the same row
+                    material_cell = row.find_element(By.XPATH, ".//td[contains(@aria-describedby, 'Material_Desc')]")
+                    material_desc = material_cell.text.strip()
+                    
+                    if material_desc:
+                        material_results_step12.append((radio_value, material_desc))
+                        print(f"  Found: {material_desc} (Value: {radio_value})")
+                    
+                except Exception as e:
+                    print(f"  Warning: Could not extract material from radio button: {e}")
+                    continue
+        
+        except Exception as e:
+            print(f"⚠️ Error extracting materials at step 12: {e}")
+        
+        # Perform verification if we have material results
+        VERIFIED_RADIO_VALUE = None  # Track verified radio button value
+        
+        if material_results_step12:
+            print(f"📦 Found {len(material_results_step12)} material description(s) at step 12")
+            
+            # If product type was provided, verify it matches
+            if PRODUCT_TYPE:
+                print(f"📦 Verifying product type at step 12: {PRODUCT_TYPE}")
+                
+                matching_materials = []
+                for radio_value, material_desc in material_results_step12:
+                    if match_product_type(PRODUCT_TYPE, material_desc):
+                        matching_materials.append((radio_value, material_desc))
+                        print(f"  ✅ Match: {material_desc}")
+                    else:
+                        print(f"  ❌ No match: {material_desc}")
+                
+                if len(matching_materials) == 0:
+                    # No matching products found
+                    available_options = "\n".join([f"  • {desc}" for _, desc in material_results_step12])
+                    ERROR_MESSAGE = f"❌ No matching product found for SO {SO_NO} at allocation step\n\n*Available products:*\n{available_options}\n\nPlease specify the correct product type."
+                    print(ERROR_MESSAGE)
+                    raise Exception(ERROR_MESSAGE)
+                
+                elif len(matching_materials) == 1:
+                    # Exactly one match - proceed with this one
+                    print(f"✅ Product verified at step 12: {matching_materials[0][1]}")
+                    VERIFIED_RADIO_VALUE = matching_materials[0][0]
+                
+                else:
+                    # Multiple matches - should be rare but ask for clarification
+                    available_options = "\n".join([f"  • {desc}" for _, desc in matching_materials])
+                    ERROR_MESSAGE = f"⚠️ Multiple matching products found for SO {SO_NO} at allocation step\n\n*Matching products:*\n{available_options}\n\nPlease be more specific."
+                    print(ERROR_MESSAGE)
+                    raise Exception(ERROR_MESSAGE)
+            
+            # If product type was NOT provided
+            else:
+                print("📦 No product type specified at step 12")
+                
+                if len(material_results_step12) > 1:
+                    # Multiple products found - ask user for clarification
+                    available_options = "\n".join([f"  {i+1}. {desc}" for i, (_, desc) in enumerate(material_results_step12)])
+                    ERROR_MESSAGE = f"⚠️ Multiple products found for SO {SO_NO} at allocation step\n\n*Available products:*\n{available_options}\n\nPlease specify product type in your message (e.g., 'S20', 'C9', '9-24-24', 'Smartek', 'Croptek')."
+                    print(ERROR_MESSAGE)
+                    raise Exception(ERROR_MESSAGE)
+                
+                else:
+                    # Only one product - proceed without verification
+                    print(f"✅ Single product found at step 12, proceeding: {material_results_step12[0][1]}")
+                    VERIFIED_RADIO_VALUE = material_results_step12[0][0]
+        
         # Step 12: Click on SplitOrder radio button with SO_NO in value
         print(f"🔍 Step 12: Looking for SplitOrder radio button with SO_NO {SO_NO}...")
         try:
-            # Find radio button where value starts with SO_NO
-            split_order_radio = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, f"//input[@name='SplitOrder' and starts-with(@value, '{SO_NO}_')]"))
-            )
+            # Use verified radio value if available, otherwise use SO_NO pattern
+            if VERIFIED_RADIO_VALUE:
+                print(f"🔍 Using verified radio value: {VERIFIED_RADIO_VALUE}")
+                split_order_radio = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, f"//input[@name='SplitOrder' and @value='{VERIFIED_RADIO_VALUE}']"))
+                )
+            else:
+                # Find radio button where value starts with SO_NO
+                split_order_radio = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, f"//input[@name='SplitOrder' and starts-with(@value, '{SO_NO}_')]"))
+                )
+            
             # Get the value to verify it contains the SO_NO
             radio_value = split_order_radio.get_attribute("value")
             print(f"✅ Found radio button with value: {radio_value}")

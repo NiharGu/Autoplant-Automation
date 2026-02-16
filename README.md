@@ -10,11 +10,12 @@ Automates vehicle allocation and order processing for Autoplant (DFPCL) logistic
 - **WhatsApp Integration** - Monitor groups and process commands via QR code login
 - **Full Automation** - 20-step Autoplant workflow from search to confirmation
 - **Smart Extraction** - Auto-parse vehicle, driver, SO numbers from messages
+- **Product Verification** - Intelligent NPK/NPKS detection and validation (NEW)
 - **Queue System** - Sequential processing with 10s delays
 - **Error Handling** - Screenshot capture + detailed error messages
 - **24/7 Uptime** - PM2 process management on Oracle Cloud
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -32,7 +33,8 @@ Create `.env` file:
 ```env
 USERNAME=your_autoplant_username
 PASSWORD=your_autoplant_password
-SS_RECIPIENT_NUM=9876543210  # WhatsApp number for screenshots
+SS_RECIPIENT_NUM=9876543210  # WhatsApp number for screenshots (without country code)
+OWNER_NUM=9876543210         # Your number for admin commands (without country code)
 ```
 
 ### Run
@@ -55,12 +57,25 @@ ap kara
 Rahul Kumar - 5678
 ```
 
+**Optional: Specify product type (recommended if SO has multiple products)**
+```
+ap kara S20         # Smartek product
+Rahul Kumar - 5678
+```
+or
+```
+ap kara C9          # Croptek product
+Rahul Kumar - 5678
+```
+
 **Original message format:**
 ```
 MH12AB5678          # Vehicle number
 Mumbai 25.5 MT      # Destination + Weight
 2200478050          # SO number (starts with 0-3)
 9876543210          # Phone (starts with 4-9)
+
+Optional: S20, C9, 9-24-24, etc.  # Product type (can be anywhere)
 ```
 
 **Bot response:**
@@ -84,7 +99,17 @@ Mumbai 25.5 MT      # Destination + Weight
 
 **20 Automated Steps:** Login → Search → Commit → Navigate → Select → Fill Details → Calculate Quantity → Submit → Confirm
 
-## 🛠️ Configuration
+## 📦 Product Type Verification
+
+Bot auto-detects and verifies product types to prevent wrong material selection. Only rows with **PENDING** or **COMMITTED** status are considered.
+
+**Supported formats:** `S20`, `C9`, `Smartek`, `Croptek`, `9-24-24`, `20:20:0:13`, etc.
+
+- If SO has **one product** → proceeds automatically
+- If SO has **multiple products** → user must specify (e.g., `ap kara S20`)
+- Product can be mentioned in the original message, quoted message, or `ap kara` command line
+
+## �🛠️ Configuration
 
 ### Change Group Name
 
