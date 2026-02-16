@@ -108,7 +108,7 @@ Bot auto-detects and verifies product types to prevent wrong material selection.
 - If SO has **multiple products** → user must specify (e.g., `ap kara S20`)
 - Product can be mentioned in the original message, quoted message, or `ap kara` command line
 
-## �🛠️ Configuration
+## 🛠️ Configuration
 
 ### Change Group Name
 
