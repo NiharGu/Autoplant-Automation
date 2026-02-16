@@ -34,7 +34,6 @@ Create `.env` file:
 USERNAME=your_autoplant_username
 PASSWORD=your_autoplant_password
 SS_RECIPIENT_NUM=9876543210  # WhatsApp number for screenshots (without country code)
-OWNER_NUM=9876543210         # Your number for admin commands (without country code)
 ```
 
 ### Run
