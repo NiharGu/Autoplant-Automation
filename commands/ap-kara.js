@@ -674,65 +674,64 @@ async function sendToPython(finalData, chatId, originalMessage) {
 
         return response.data;
 
-    } catch (error) {
-        console.error('❌ Error sending to Python:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status
-        });
-        
-        // Handle error responses from Python
-        if (globalSock && chatId) {
-            let errorMessage = '❌ *Processing Failed*\n\n';
-            
-            // Extract the specific error message from Python if available
-            if (error.response?.data?.status === 'error') {
-                errorMessage += `*Error:* ${error.response.data.message}`;
-            } else if (error.response?.data?.error) {
-                errorMessage += `*Error:* ${error.response.data.error}`;
-            } else {
-                const genericError = error.message || 'An unexpected error occurred while processing your request.';
-                errorMessage += `*Error:* ${genericError}`;
-            }
-            
-            //errorMessage += '\n\n🔄 Please check the screenshot below for the exact failure point.';
+    } catch (error) {
+        console.error('❌ Error sending to Python:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
 
-            // Path provided: /home/ubuntu/whatsapp-bot/error_ss.png
-            const ERROR_SS_PATH = '/home/ubuntu/whatsapp-bot/error_ss.png';
+        // Handle error responses from Python
+        if (globalSock && chatId) {
+            let errorMessage = '❌ *Processing Failed*\n\n';
 
-            if (fs.existsSync(ERROR_SS_PATH)) {
-                try {
-                    // 1. Read the screenshot
-                    const imageBuffer = fs.readFileSync(ERROR_SS_PATH);
+            // Custom message for timeout error
+            if (error.message && error.message.includes('timeout of 300000ms exceeded')) {
+                errorMessage += '*Error:* Server took too long to respond. Please try again.';
+            } else if (error.response?.data?.status === 'error') {
+                errorMessage += `*Error:* ${error.response.data.message}`;
+            } else if (error.response?.data?.error) {
+                errorMessage += `*Error:* ${error.response.data.error}`;
+            } else {
+                const genericError = error.message || 'An unexpected error occurred while processing your request.';
+                errorMessage += `*Error:* ${genericError}`;
+            }
 
-                    // 2. Send as Image with Caption
-                    await globalSock.sendMessage(chatId, {
-                        image: imageBuffer,
-                        caption: errorMessage
-                    }, { 
-                        quoted: originalMessage 
-                    });
+            const ERROR_SS_PATH = '/home/ubuntu/whatsapp-bot/error_ss.png';
 
-                    console.log('📸 Error screenshot sent successfully.');
+            if (fs.existsSync(ERROR_SS_PATH)) {
+                try {
+                    // 1. Read the screenshot
+                    const imageBuffer = fs.readFileSync(ERROR_SS_PATH);
 
-                    // 3. Delete the file after sending
-                    fs.unlinkSync(ERROR_SS_PATH);
-                    console.log('🧹 Error screenshot deleted from server.');
+                    // 2. Send as Image with Caption
+                    await globalSock.sendMessage(chatId, {
+                        image: imageBuffer,
+                        caption: errorMessage
+                    }, {
+                        quoted: originalMessage
+                    });
 
-                } catch (ssSendError) {
-                    console.error('⚠️ Failed to send or delete screenshot:', ssSendError);
-                    // Fallback to text if image sending fails
-                    await globalSock.sendMessage(chatId, { text: errorMessage }, { quoted: originalMessage });
-                }
-            } else {
-                // No screenshot found, send just the text error
-                await globalSock.sendMessage(chatId, { text: errorMessage }, { quoted: originalMessage });
-                console.log('ℹ️ No error screenshot found at path, sent text-only message.');
-            }
-        }
-        
-        return null;
-    }
+                    console.log('📸 Error screenshot sent successfully.');
+
+                    // 3. Delete the file after sending
+                    fs.unlinkSync(ERROR_SS_PATH);
+                    console.log('🧹 Error screenshot deleted from server.');
+
+                } catch (ssSendError) {
+                    console.error('⚠️ Failed to send or delete screenshot:', ssSendError);
+                    // Fallback to text if image sending fails
+                    await globalSock.sendMessage(chatId, { text: errorMessage }, { quoted: originalMessage });
+                }
+            } else {
+                // No screenshot found, send just the text error
+                await globalSock.sendMessage(chatId, { text: errorMessage }, { quoted: originalMessage });
+                console.log('ℹ️ No error screenshot found at path, sent text-only message.');
+            }
+        }
+
+        return null;
+    }
 }
 
 // MODIFIED: Route to receive messages from Python with reply functionality

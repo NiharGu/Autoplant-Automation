@@ -1,3 +1,14 @@
+import subprocess
+def kill_browser_processes():
+    """Kill common browser and driver processes to avoid hanging sessions."""
+    process_names = ["chromedriver", "chrome", "chromium", "firefox", "geckodriver"]
+    for proc in process_names:
+        try:
+            subprocess.run(["pkill", "-f", proc], check=False)
+        except Exception as e:
+            print(f"Could not kill {proc}: {e}")
+
+kill_browser_processes()
 from flask import Flask, request, jsonify
 from selenium import webdriver
 from selenium.webdriver.common.by import By
